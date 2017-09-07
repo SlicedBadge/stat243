@@ -1,0 +1,69 @@
+2.a)The countries seem to change fairly often (although Iran and China are fairly consistent)
+
+Code:
+	#This script individually downloads and extracts the top 5 countries based on Apricot harvest for 2005
+	#It then automates the process of finding the top countries in a for loop
+	
+	#download the file and unzip to Apricots.csv
+	curl "http://data.un.org/Handlers/DownloadHandler.ashx?DataFilter=itemCode:526&DataMartId=FAO&Format=csv&c=2,3,4,5,6,7&s=countryName:asc,elementCode:asc,year:desc" > Apricots.zip
+	unzip Apricots.zip
+	mv UNdata_Export_20170903_204256778.csv Apricots.csv
+	#remove extra file
+	rm Apricots.zip
+
+	#separate the regions and countries data
+	grep "+" Apricots.csv > Regions.csv
+	grep -v "+" Apricots.csv > Countries.csv
+	
+	#get countries data from 2005
+	grep "2005" Countries.csv > Countries_2005.csv
+	
+	#get the top five countries by area harvested
+	grep "Area Harvested" Countries_2005.csv | sed 's/\"//g' | sort -t',' -k 6 | tail -n 5 | cut -d',' -f 1
+	
+	#for loop that automates this for 1965, 1975, 1985, 1995, 2005
+	for ((i=1965; i<=2005; i+=10)); do
+		echo "The top five countries in ${i} were:"
+		grep "${i}" Countries.csv | grep "Area Harvested" | sed 's/\"//g' | sort -t',' -k 6 | tail -n 5 | cut -d',' -f 1
+	done
+
+
+2.b
+
+Code:
+	#This function takes a single argument for the item code to download crop data on. It can also give a help message with -h.
+	
+	function GetCrops() {
+		#check to make sure there is only one argument given
+		if [ $# == "0" ]; then
+			echo "Too few arguments. Please give a single item code."
+		elif [ $# != "1" ]; then
+			echo "Too many arguments. Please give a single item code."
+		else
+			#if the argument is "-h" print help message, else download the data to Data.zip and unzip
+			if [ $1 == "-h" ]; then
+				echo "GetCrops [item code]"
+				echo "This function takes 1 argument (item code) which is used to retrieve csv data on that crop and prints to stdout."
+			else
+				curl "http://data.un.org/Handlers/DownloadHandler.ashx?DataFilter=itemCode:${1}&DataMartId=FAO&Format=csv&c=2,3,4,5,6,7&s=countryName:asc,elementCode:asc,year:desc" > Data.zip
+				unzip -p Data.zip
+				#remove extra file
+				rm Data.zip
+			fi
+		fi
+	}
+
+
+3)
+Code:
+	#This script downloads all txt files from https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/
+	
+	#find all the txt files on the webpage to download and store them in $files_to_read
+	files_to_read=$(curl "https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/" | grep -o ".*.txt" | cut -d '>' -f 7)
+	
+	#download each file and give status to user
+	for fil in $files_to_read; do
+		echo "Downloading ${fil}"
+		curl -# "https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/${fil}" > $fil
+	done
+
