@@ -8,8 +8,8 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(stringr)
-library(XML)
 library(testthat)
+library(methods)
 ```
 # Riv Jenkins
 
@@ -19,38 +19,190 @@ In the "Best Practices for Scientific Computing" article, the authors claim that
 I do not agree that this will be faster overall because although you may spend more time coding in a lower-level language if you start with that language than you would if you were simply transposing from a higher level language, I don't think the time saved by transposing would equal the amount of time necessary to write the program in the higher level language.
 There are other arguments in favor of coding in a high level first, and only switching to a low level if necessary, but I do not think time savings is one of them.
 
-## 2 a)
-```{r}
+## 2 a) 
+The following code downloads the full text and creates a character vector with each element corresponding to a different play. I skip the Comedy of Errors.
+```{r initial download}
+#download the full text file
 fulltext = readLines("http://www.gutenberg.org/cache/epub/100/pg100.txt")
 ```
-```{r}
+```{r extraction}
+#extract overall start and end points for the plays
 start_point = which(!is.na(str_extract(fulltext, "1603")))
 end_point = which(!is.na(str_extract(fulltext, "We were dissever'd"))) + 2
+
+#create char vector with only plays
 all_plays = fulltext[start_point:end_point]
+
+#mark characters' speeches with '##'
+all_plays = str_replace_all(all_plays, "^ {2}([A-Z])", "##\\1")
+#remove many stage directions
+all_plays = str_replace_all(all_plays, " {2}((Enter)|(Exit)|(Re-enter)|(Exeunt)).*$", "")
+
+#separate individual plays using "THE END"
 Play_ends = c(0, which(!is.na(str_extract(all_plays, "THE END"))))
 
 Create_Play_Vec <- function(all_plays, Play_ends){
+  #this function takes a char vector with evey line a row (all_plays) and returns a char
+  #vector with every row a separate play using the endpoints denoted by Play_ends
   char_vec = character(length(Play_ends) - 1)
   for(i in 1:(length(Play_ends)-1)){
     if(i==1){
       char_vec[i] = paste0(all_plays[Play_ends[i]:Play_ends[i+1]], collapse = ' ')
     }
     else if(i==4){
+      #for some reason this play is formatted differently
       char_vec[i] = paste0(all_plays[(Play_ends[i]+2):Play_ends[i+1]], collapse = ' ')
     }
     else{
       char_vec[i] = paste0(all_plays[(Play_ends[i]+13):Play_ends[i+1]], collapse = ' ')
     }
   }
+  #remove copyright tags
+  char_vec = str_replace_all(char_vec, "<<TH[^>]+IP.>>", "")
   return(char_vec)
 }
 
 play_vec = Create_Play_Vec(all_plays, Play_ends)
+rm(fulltext)
+#remove comedy of errors
+play_vec = play_vec[-4]
 substring(play_vec, 1, 55)
 ```
 
-##  b)
+##  b) 
+The following code takes the character vector constructed above and turns each play into an object which has the title, number of acts, scenes, year produced, and the text of the body.
+```{r objectify}
+Play <- function(Title = NULL, Acts = 5, Scenes = NULL, Characters = NULL, Year = NULL, Body = NULL){
+  #defines a class for a play (all Shakespeare plays should have 5 acts)
+  obj = list(Title = Title, Acts = Acts, Scenes = Scenes, Characters = Characters, Year = Year, Body = Body)
+  class(obj) <- 'Play'
+  return(obj)
+}
+
+#extract years of plays
+years = str_extract(play_vec, "[0-9]{4} ")
+#extract titles of plays
+titles = str_extract(play_vec, "[0-9] [A-Z ,';]+")
+titles = str_replace(titles, "[0-9 ]+", "")
+#extract number of scenes
+scenes = str_count(play_vec, "S[cC][eE][nN][eE]")
+#extract body of each play
+body = str_extract(play_vec, "ACT.*THE END")
+body = sapply(body, str_replace, "THE END", "#THE END")
+
+#construct a list of all plays
+plays = list()
+for(i in 1:length(play_vec)){
+  plays[[i]] <- Play(Title=titles[i], Scenes = scenes[i], Year=years[i], Body = body[i])
+}
+plays[[2]]
+
+```
+
+##  c)
+The following code takes the objects created above and adds to them by extracting each chunk of spoken text.
+```{r get chunks}
+Get_speech <- function(play){
+  #this function takes a play object and returns the chunks of speech text
+  
+  #use the '#' markers to extract the chunks from the body string
+  chunks = str_extract_all(play$Body, "#[A-Z a-z]+\\..*?#")
+  #get the speaker for each chunk
+  chunknames = str_extract_all(chunks, "#[A-Z a-z]+\\.")
+  
+  #remove extraneous symbols
+  chunks = sapply(chunks, str_replace_all, "#[A-Z a-z]+\\.", "")
+  chunknames = sapply(chunknames, str_replace_all, "#", "")
+  chunknames = str_replace_all(chunknames, "\\.", "")
+  
+  #remove more stage directions
+  chunks = str_replace_all(chunks, "\\[[^\\]]+\\]", "")
+  
+  return(list(names = chunknames, text = chunks))
+}
+
+#extract the spoken chunks for each play
+for(i in 1:length(plays)){
+  plays[[i]]$Chunks = Get_speech(plays[[i]])
+}
+print(c(plays[[4]]$Chunks$names[50], plays[[4]]$Chunks$text[50]))
+
+```
+##  d)
+The following code calculates many different statistics for each play and displays a summary of some of these statistics.
+```{r stats}
+Calculate_Stats <- function(play){
+  #This function takes a play object and calculates many statistics for that play and then
+  #returns the modified object
+  
+  #extract all speakers from play
+  play$Characters = unique(play$Chunks$names)
+  #count the number of unique speakers
+  num_char = length(play$Characters)
+  
+  num_chunks = length(play$Chunks$text)
+  #calculate number of sentences
+  num_sent = sapply(str_extract_all(play$Chunks$text, "[\\.\\?\\!]+"), length)
+  num_sent = sum(num_sent)
+  
+  #count number of words, and get average number per chunk
+  words = str_extract_all(play$Chunks$text, "[\\w']+")
+  num_words = sum(sapply(words, length))
+  avg_words = num_words/num_chunks
+  
+  #count the number of unique words
+  num_un_words = length(unique(unlist(words)))
+  
+  #store all the statistics in the Play object
+  play$Stats = list(Num_Speakers = num_char, Num_Chunks = num_chunks, Num_Sentences = 
+                    num_sent, Num_Words = num_words, Avg_Words_Chunk = avg_words, 
+                    Num_Unique_Words = num_un_words)
+  
+  return(play)
+}
+
+#calculate statistics for each play
+plays = lapply(plays, Calculate_Stats)
+```
+
+
+```{r summary stats}
+summary.Play <- function(play){
+  #this function defines what should be printed when a summary of a Play is requested
+  print.noquote(play$Title)
+  print.noquote(paste("   Number of Acts:", play$Acts," Number of Scenes:", play$Scenes))
+  print.noquote(paste("   Number of unique speakers:", play$Stats$Num_Speakers))
+  print.noquote(paste("   Number of spoken chunks:", play$Stats$Num_Chunks))
+}
+#print the summary statistics for each play
+invisible(lapply(plays, summary))
+
+```
+##  e)
 ```{r}
-length(which(!is.na(str_extract(all_plays, "THIS ELECTRONIC VERSION"))))
+y = sapply(plays, function(play) return(play$Stats$Num_Chunks))
+x = sapply(plays, function(play) return(as.numeric(play$Year)))
+plot(x,y)
+```
+
+
+
+```{r}
+unique
+words = str_extract_all(plays[[1]]$Chunks$text, "[\\w']+")
+un_words = unique(unlist(words))
+plays[[1]]$Chunks$text[166]
+# work_play = plays[[1]]$Body
+# work_text = substring(work_play, 1, 400)
+# work_play = str_replace_all(work_play, "ACT [IV]+\\.", "ACT")
+# work_play = str_replace_all(work_play, "SCENE [IV]+\\.", "SCENE")
+# work_text = str_replace_all(work_text, " {3}", "##")
+# str_extract_all(work_play, "#[A-Z ]+\\.")
+# str_extract_all(work_text, "#[A-Z ]+\\..*?#")
+# for(i in 1:length(plays)){
+#   print(c(plays[[i]]$Title, length(plays[[i]]$Chunks$names)))
+# }
+testing = play_vec[-4]
+testing[2]
 ```
 
