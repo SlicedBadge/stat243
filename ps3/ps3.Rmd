@@ -179,30 +179,21 @@ invisible(lapply(plays, summary))
 
 ```
 ##  e)
-```{r}
+The following plots show number of chunks per play over time, and the number of unique words per play over time. There do not seem to be any obvious trends to me. The strongest trend I saw was that the number of chunks seems to rise and then fall right at the end.
+```{r Plot1}
 y = sapply(plays, function(play) return(play$Stats$Num_Chunks))
 x = sapply(plays, function(play) return(as.numeric(play$Year)))
-plot(x,y)
+plot(x,y, main="Number of Chunks per Play over Time", xlab="Year", ylab="Number of Chunks")
 ```
 
-
-
-```{r}
-unique
-words = str_extract_all(plays[[1]]$Chunks$text, "[\\w']+")
-un_words = unique(unlist(words))
-plays[[1]]$Chunks$text[166]
-# work_play = plays[[1]]$Body
-# work_text = substring(work_play, 1, 400)
-# work_play = str_replace_all(work_play, "ACT [IV]+\\.", "ACT")
-# work_play = str_replace_all(work_play, "SCENE [IV]+\\.", "SCENE")
-# work_text = str_replace_all(work_text, " {3}", "##")
-# str_extract_all(work_play, "#[A-Z ]+\\.")
-# str_extract_all(work_text, "#[A-Z ]+\\..*?#")
-# for(i in 1:length(plays)){
-#   print(c(plays[[i]]$Title, length(plays[[i]]$Chunks$names)))
-# }
-testing = play_vec[-4]
-testing[2]
+```{r Plot2}
+y = sapply(plays, function(play) return(play$Stats$Num_Unique_Words))
+x = sapply(plays, function(play) return(as.numeric(play$Year)))
+plot(x,y, main="Number of Unique Words per Play over Time", xlab="Year", ylab="Number of Unique Words")
 ```
 
+## 3 a)
+I did somewhat use an object-oriented approach in terms of defining my own class for a play. The fields I used are title, year, acts, scenes, characters, chunks, full body, and statistics. The title is a character string. Acts and scenes simply contain an integer for the number of acts and scenes. Chunks contains the spoken chunks and speaker of each chunk in a list. The full body is one long character string of the body of the play. The statistics are a list of different statistics calculated for the play.
+
+##   b)
+The methods would be the functions I defined in my code: initialization function (Play), Get_Speech(), Calculate_Stats(), and summary(). Finally, I would also implement the plotting as a method as well.
